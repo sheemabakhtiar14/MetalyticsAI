@@ -99,6 +99,7 @@ function renderChart(chart) {
 
 async function refreshComparison() {
   const inputs = collectInputs();
+  localStorage.setItem("sustainability_comparison_inputs", JSON.stringify(inputs));
   recycledValue.textContent = inputs.recycled_content;
 
   if (inputs.metals.length < 2) {

@@ -116,6 +116,7 @@ function updateRecommendations(items) {
 
 async function refreshDashboard() {
   const inputs = collectInputs();
+  localStorage.setItem("sustainability_gap_inputs", JSON.stringify(inputs));
   recycledValue.textContent = inputs.recycled_content;
   downloadLink.href = `/download?${queryStringFromInputs(inputs)}`;
 

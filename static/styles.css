@@ -489,6 +489,10 @@ tr:last-child td {
   color: var(--green-soft);
 }
 
+.report-action {
+  margin-top: 0.75rem;
+}
+
 .insights-list {
   display: grid;
   gap: 0.65rem;

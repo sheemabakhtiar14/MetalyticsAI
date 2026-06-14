@@ -4,6 +4,7 @@ const recycledValue = document.querySelector("#recycled-value");
 const downloadLink = document.querySelector("#download-link");
 const insightsButton = document.querySelector("#insights-button");
 const insightsContainer = document.querySelector("#insights");
+const pdfReportButton = document.querySelector("#pdf-report-button");
 const INSIGHTS_TIMEOUT_MS = 30000;
 
 const chartTargets = {
@@ -31,6 +32,18 @@ function collectInputs() {
 
 function queryStringFromInputs(inputs) {
   return new URLSearchParams(inputs).toString();
+}
+
+function saveReportState(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readReportState(key) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || "null");
+  } catch (error) {
+    return null;
+  }
 }
 
 function sharedOnly(inputs) {
@@ -134,6 +147,7 @@ function renderInsights(text) {
 
 async function refreshDashboard() {
   latestInputs = collectInputs();
+  saveReportState("sustainability_dashboard_inputs", latestInputs);
   recycledValue.textContent = latestInputs.recycled_content;
   downloadLink.href = `/download?${queryStringFromInputs(latestInputs)}`;
 
@@ -208,6 +222,7 @@ insightsButton.addEventListener("click", async () => {
     }
 
     const payload = await response.json();
+    saveReportState("sustainability_gemini_insights", payload.insights || "");
     renderInsights(payload.insights);
   } catch (error) {
     const message =
@@ -219,6 +234,46 @@ insightsButton.addEventListener("click", async () => {
     window.clearTimeout(timeout);
     insightsButton.disabled = false;
     insightsButton.textContent = "Generate AI Insights with Gemini";
+  }
+});
+
+pdfReportButton.addEventListener("click", async () => {
+  pdfReportButton.disabled = true;
+  pdfReportButton.textContent = "Preparing PDF report...";
+
+  try {
+    const reportPayload = {
+      dashboard: collectInputs(),
+      gap: readReportState("sustainability_gap_inputs"),
+      comparison: readReportState("sustainability_comparison_inputs"),
+      monetary: readReportState("sustainability_monetary_inputs"),
+      gemini_insights: readReportState("sustainability_gemini_insights") || "",
+    };
+
+    const response = await fetch("/api/export-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reportPayload),
+    });
+
+    if (!response.ok) {
+      throw new Error("Could not export PDF report");
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "sustainability_complete_report.pdf";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    insightsContainer.innerHTML = `<div class="insight-card warn">${error.message}</div>`;
+  } finally {
+    pdfReportButton.disabled = false;
+    pdfReportButton.textContent = "Export Complete PDF Report";
   }
 });
 

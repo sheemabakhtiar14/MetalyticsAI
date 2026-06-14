@@ -54,6 +54,7 @@ function updateChart(chart) {
 
 async function refreshMonetaryImpact() {
   const inputs = collectInputs();
+  localStorage.setItem("sustainability_monetary_inputs", JSON.stringify(inputs));
   recycledValue.textContent = inputs.recycled_content;
 
   const response = await fetch("/api/monetary", {

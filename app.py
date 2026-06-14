@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import io
 import os
+import textwrap
+from datetime import datetime
 from dataclasses import asdict, dataclass
 
 import google.generativeai as genai
@@ -541,6 +543,144 @@ def generate_csv(rows: list[dict]) -> str:
     return output.getvalue()
 
 
+def _clean_pdf_text(value: object) -> str:
+    text = str(value).replace("₹", "Rs.").replace("CO₂", "CO2")
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+def _pdf_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def build_text_pdf(title: str, lines: list[str]) -> bytes:
+    wrapped_lines = []
+    for line in lines:
+        if line == "":
+            wrapped_lines.append("")
+            continue
+        wrapped_lines.extend(textwrap.wrap(_clean_pdf_text(line), width=92) or [""])
+
+    pages = []
+    page_lines = []
+    for line in wrapped_lines:
+        page_lines.append(line)
+        if len(page_lines) >= 38:
+            pages.append(page_lines)
+            page_lines = []
+    if page_lines:
+        pages.append(page_lines)
+
+    objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "",
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+
+    page_refs = []
+    for index, page in enumerate(pages):
+        page_obj_id = len(objects) + 1
+        content_obj_id = len(objects) + 2
+        page_refs.append(f"{page_obj_id} 0 R")
+
+        stream_lines = ["BT", "/F1 10 Tf", "56 752 Td", f"({_pdf_escape(_clean_pdf_text(title))}) Tj"]
+        stream_lines.extend(["/F1 9 Tf", "0 -28 Td"])
+        for line in page:
+            stream_lines.append(f"({_pdf_escape(line)}) Tj")
+            stream_lines.append("0 -15 Td")
+        stream_lines.append("ET")
+        stream = "\n".join(stream_lines)
+
+        objects.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_obj_id} 0 R >>"
+        )
+        objects.append(f"<< /Length {len(stream.encode('latin-1', 'replace'))} >>\nstream\n{stream}\nendstream")
+
+    objects[1] = f"<< /Type /Pages /Kids [{' '.join(page_refs)}] /Count {len(page_refs)} >>"
+
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for idx, obj in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{idx} 0 obj\n{obj}\nendobj\n".encode("latin-1", "replace"))
+
+    xref_offset = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode("latin-1"))
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode("latin-1"))
+    pdf.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode(
+            "latin-1"
+        )
+    )
+    return bytes(pdf)
+
+
+def _section(lines: list[str], title: str) -> None:
+    lines.extend(["", title, "-" * len(title)])
+
+
+def _metric_rows(lines: list[str], rows: list[dict], value_key: str = "Value") -> None:
+    for row in rows:
+        lines.append(f"{row.get('Metric')}: {row.get(value_key)}")
+
+
+def build_complete_report(data: dict) -> bytes:
+    from gap import build_monetary_payload, build_payload as build_gap_payload, parse_inputs as parse_gap_inputs
+
+    dashboard_inputs = data.get("dashboard") or DEFAULT_INPUTS.copy()
+    comparison_inputs = data.get("comparison") or {
+        **dashboard_inputs,
+        "metals": ["Aluminium", "Titanium"],
+    }
+    gap_inputs = data.get("gap") or dashboard_inputs
+    monetary_inputs = data.get("monetary") or gap_inputs
+    gemini_insights = (data.get("gemini_insights") or "").strip()
+
+    dashboard_payload = build_payload(parse_inputs(dashboard_inputs))
+    comparison_payload = build_comparison_payload(comparison_inputs)
+    gap_payload = build_gap_payload(parse_gap_inputs(gap_inputs))
+    monetary_payload = build_monetary_payload(monetary_inputs)
+
+    lines = [
+        "Metalytics AI Complete Report",
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+    ]
+
+    _section(lines, "Main Sustainability Dashboard")
+    lines.append(f"Selected Metal: {dashboard_payload['inputs']['metal_type']}")
+    _metric_rows(lines, dashboard_payload["table"])
+
+    _section(lines, "Circularity Gap")
+    _metric_rows(lines, gap_payload["table"], "Value (%)")
+    lines.append(f"Status: {gap_payload['status']['label']}")
+    lines.append("Recommendations:")
+    for item in gap_payload["recommendations"]:
+        lines.append(f"- {item}")
+
+    _section(lines, "Metal Comparison")
+    for row in comparison_payload["rows"]:
+        lines.append(
+            f"{row['metal']}: red mud feed {row['red_mud_feed_required']:,.2f} kg, "
+            f"operational CO2 {row['total_co2']:,.2f} kg, total energy {row['total_energy']:,.2f} kWh, "
+            f"process CO2 {row['metal_process_co2']:,.2f} kg, circularity {row['circularity_score']:.2f}"
+        )
+
+    _section(lines, "Monetary Impact")
+    _metric_rows(lines, monetary_payload["table"])
+
+    _section(lines, "Gemini AI Insights")
+    if gemini_insights:
+        for insight in gemini_insights.splitlines():
+            if insight.strip():
+                lines.append(insight.strip())
+    else:
+        lines.append("No Gemini insights were generated before export.")
+
+    return build_text_pdf("Metalytics AI Complete Report", lines)
+
+
 def get_gemini_insights(inputs: SustainabilityInputs, metrics: dict) -> str:
     prompt = f"""
 You are a sustainability expert analyzing manufacturing data for a {inputs.metal_type} production facility.
@@ -643,6 +783,16 @@ def api_insights():
     metrics = calculate_metrics(inputs)
     insights = get_gemini_insights(inputs, metrics)
     return jsonify({"insights": insights})
+
+
+@app.post("/api/export-report")
+def api_export_report():
+    pdf = build_complete_report(request.get_json(silent=True) or {})
+    return Response(
+        pdf,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=sustainability_complete_report.pdf"},
+    )
 
 
 @app.get("/download")
