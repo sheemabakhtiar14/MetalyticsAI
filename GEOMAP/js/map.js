@@ -2,7 +2,7 @@
 
 const GeoMap = (() => {
   let _map, _heat, _routeGroup, _markerGroup, _clusterGroup, _segmentGroup;
-  let _heatOn = true, _routesOn = true, _clustersOn = false, _segmentsOn = true;
+  let _heatOn = true, _routesOn = false, _clustersOn = false, _segmentsOn = false, _lulcOn = false;
   let _currentView = 'impact';
   let _data = null;
   const _markers = {};
@@ -93,7 +93,7 @@ const GeoMap = (() => {
 
     // CartoDB labels-only pane on top so place names stay readable over imagery
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd', maxZoom: 19, opacity: 0.85,
+      subdomains: 'abcd', maxZoom: 19, opacity: 0.72,
       attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
     }).addTo(_map);
 
@@ -109,14 +109,13 @@ const GeoMap = (() => {
     const pts = _data.facilities.map(f => [f.lat, f.lng, _heatVal(f)]);
     // GEE-style heatmap — viridis-inspired gradient, vivid against satellite
     _heat = L.heatLayer(pts, {
-      radius: 55, blur: 35, maxZoom: 7, max: 1.0,
+      radius: 42, blur: 32, maxZoom: 7, max: 1.0,
       gradient: {
         0.00: 'rgba(0,0,0,0)',
-        0.20: 'rgba(68,1,84,0.55)',
-        0.40: 'rgba(59,82,139,0.65)',
-        0.60: 'rgba(33,145,140,0.70)',
-        0.80: 'rgba(94,201,98,0.75)',
-        1.00: 'rgba(253,231,37,0.90)'
+        0.25: 'rgba(45,88,117,0.28)',
+        0.50: 'rgba(42,126,125,0.34)',
+        0.75: 'rgba(107,151,83,0.40)',
+        1.00: 'rgba(214,169,67,0.52)'
       }
     }).addTo(_map);
   }
@@ -156,9 +155,9 @@ const GeoMap = (() => {
         style: {
           color: '#ffffff',
           fillColor: color,
-          fillOpacity: 0.32,
-          weight: 2,
-          opacity: 0.90,
+          fillOpacity: 0.18,
+          weight: 1.25,
+          opacity: 0.70,
           dashArray: null
         }
       });
@@ -185,17 +184,17 @@ const GeoMap = (() => {
 
       // GEE-style impact-zone rings — solid bright ring, no fill (keeps satellite visible)
       region.facilities.forEach(f => {
-        const r = (55 + (f.eis / 100) * 180) * 1000;
+        const r = (35 + (f.eis / 100) * 110) * 1000;
         L.circle([f.lat, f.lng], {
           radius: r,
           color: _eisColor(f.eis), fillColor: 'transparent',
-          fillOpacity: 0, weight: 1.5, opacity: 0.50,
+          fillOpacity: 0, weight: 1, opacity: 0.28,
           dashArray: '6 10'
         }).addTo(_segmentGroup);
       });
     });
 
-    _segmentGroup.addTo(_map);
+    if (_segmentsOn) _segmentGroup.addTo(_map);
   }
 
   function _regionTip(r, color) {
@@ -218,10 +217,10 @@ const GeoMap = (() => {
 
   // GEE spectral palette — vivid, high-contrast against satellite imagery
   function _eisColor(eis) {
-    if (eis >= 70) return '#FF1744';   // bright red   — critical
-    if (eis >= 50) return '#FF6D00';   // vivid orange — high
-    if (eis >= 30) return '#FFD600';   // bright yellow — moderate
-    return '#00E676';                  // vivid green  — low
+    if (eis >= 70) return '#c2410c';
+    if (eis >= 50) return '#d97706';
+    if (eis >= 30) return '#a3a34b';
+    return '#2f8f6b';
   }
 
   // ── Transport Routes ──────────────────────────────────────────────────────────
@@ -229,10 +228,10 @@ const GeoMap = (() => {
     _routeGroup = L.layerGroup();
     _data.facilities.forEach(f => {
       const color  = _routeColor(f.normTrans);
-      const weight = Math.max(2, Math.min(6, f.productionVolume / 180000 * 5));
+      const weight = Math.max(1.5, Math.min(4, f.productionVolume / 180000 * 4));
 
       L.polyline([[f.lat, f.lng], [f.transportRoute.destLat, f.transportRoute.destLng]], {
-        color, weight, opacity: 0.75,
+        color, weight, opacity: 0.48,
         dashArray: f.normTrans > 0.7 ? '8 5' : null
       }).bindTooltip(
         `<strong>${f.shortName} → ${f.transportRoute.destination}</strong><br>
@@ -245,14 +244,14 @@ const GeoMap = (() => {
         radius: 4, color: '#64748b', fillColor: '#94a3b8', fillOpacity: 0.9, weight: 1
       }).bindTooltip(f.transportRoute.destination, { className: 'geo-tooltip' }).addTo(_routeGroup);
     });
-    _routeGroup.addTo(_map);
+    if (_routesOn) _routeGroup.addTo(_map);
   }
 
   function _routeColor(n) {
-    if (n > 0.70) return '#FF1744';
-    if (n > 0.40) return '#FF6D00';
-    if (n > 0.15) return '#FFD600';
-    return '#00E676';
+    if (n > 0.70) return '#c2410c';
+    if (n > 0.40) return '#d97706';
+    if (n > 0.15) return '#a3a34b';
+    return '#2f8f6b';
   }
 
   // ── Individual Markers ────────────────────────────────────────────────────────
@@ -269,7 +268,7 @@ const GeoMap = (() => {
   function _createMarker(f) {
     const score = _currentView === 'recovery' ? f.ros : _currentView === 'circularity' ? f.cs : f.eis;
     const cls   = Analytics.eisClass(score);
-    const size  = Math.round(26 + (f.productionVolume / Math.max(..._data.facilities.map(x => x.productionVolume))) * 30);
+    const size  = Math.round(22 + (f.productionVolume / Math.max(..._data.facilities.map(x => x.productionVolume))) * 22);
 
     const html = `
       <div class="fmarker fmarker-${cls}" style="width:${size}px;height:${size}px;line-height:${size}px;font-size:${Math.max(9,size/3.1)}px">
@@ -326,6 +325,13 @@ const GeoMap = (() => {
     _heatOn = !_heatOn;
     _heatOn ? _map.addLayer(_heat) : _map.removeLayer(_heat);
     document.getElementById('btn-heatmap').classList.toggle('active', _heatOn);
+  }
+
+  function toggleLULC() {
+    _lulcOn = !_lulcOn;
+    const legend = document.getElementById('lulc-legend');
+    if (legend) legend.classList.toggle('visible', _lulcOn);
+    document.getElementById('btn-lulc').classList.toggle('active', _lulcOn);
   }
 
   function toggleRoutes() {
@@ -393,5 +399,5 @@ const GeoMap = (() => {
 
   function getMap() { return _map; }
 
-  return { init, toggleHeatmap, toggleRoutes, toggleClusters, toggleSegments, setView, focusFacility, getMap };
+  return { init, toggleLULC, toggleHeatmap, toggleRoutes, toggleClusters, toggleSegments, setView, focusFacility, getMap };
 })();

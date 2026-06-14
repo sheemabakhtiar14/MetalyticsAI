@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 import google.generativeai as genai
 import plotly.graph_objects as go
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory
 
 from shared_inputs import read_shared_inputs, write_shared_inputs
 
@@ -589,6 +589,21 @@ def index():
         defaults=defaults,
         metal_types=METAL_TYPES,
     )
+
+
+@app.get("/geomap")
+def geomap_redirect():
+    return redirect("/geomap/")
+
+
+@app.get("/geomap/")
+def geomap_index():
+    return send_from_directory("GEOMAP", "index.html")
+
+
+@app.get("/geomap/<path:filename>")
+def geomap_assets(filename: str):
+    return send_from_directory("GEOMAP", filename)
 
 
 @app.route("/comparison")

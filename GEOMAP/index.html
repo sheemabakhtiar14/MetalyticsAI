@@ -18,26 +18,31 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+  <nav id="project-nav">
+    <a class="project-brand" href="http://127.0.0.1:5002/">
+      <span class="project-brand-mark">SE</span>
+      <span>Sustainability Engine</span>
+    </a>
+    <div class="project-nav-links">
+      <a href="http://127.0.0.1:5002/">Dashboard</a>
+      <a href="http://127.0.0.1:5002/comparison">Compare Metals</a>
+      <a class="active" href="http://127.0.0.1:5002/geomap/">Geo-Impact Mapper</a>
+      <a href="http://127.0.0.1:5001/">Circularity Gap</a>
+      <a href="http://127.0.0.1:5001/monetary">Monetary Impact</a>
+    </div>
+  </nav>
 
   <!-- ── TOP BAR ─────────────────────────────────────────────────────────────── -->
   <header id="topbar">
-    <div class="brand">
-      <div class="brand-icon">⬡</div>
-      <div>
-        <div class="brand-name">MetalAI</div>
-        <div class="brand-sub">GEO IMPACT MAPPER</div>
-      </div>
-    </div>
-
     <div id="auto-highlights">
       <!-- Populated by UI.init() -->
     </div>
 
     <div class="layer-controls">
-      <button class="layer-btn active" id="btn-lulc"     onclick="GeoMap.toggleLULC()"     title="Toggle ESA WorldCover land cover classification">Land Cover</button>
+      <button class="layer-btn"        id="btn-lulc"     onclick="GeoMap.toggleLULC()"     title="Toggle ESA WorldCover land cover classification">Land Cover</button>
       <button class="layer-btn active" id="btn-heatmap"  onclick="GeoMap.toggleHeatmap()"  title="Toggle CO₂ heatmap">Heatmap</button>
-      <button class="layer-btn active" id="btn-routes"   onclick="GeoMap.toggleRoutes()"   title="Toggle transport routes">Routes</button>
-      <button class="layer-btn active" id="btn-segments" onclick="GeoMap.toggleSegments()" title="Toggle regional segmentation zones">Regions</button>
+      <button class="layer-btn"        id="btn-routes"   onclick="GeoMap.toggleRoutes()"   title="Toggle transport routes">Routes</button>
+      <button class="layer-btn"        id="btn-segments" onclick="GeoMap.toggleSegments()" title="Toggle regional segmentation zones">Regions</button>
       <button class="layer-btn"        id="btn-clusters" onclick="GeoMap.toggleClusters()" title="Toggle facility clusters">Clusters</button>
       <div class="view-switcher">
         <button class="view-btn active" data-view="impact"      onclick="GeoMap.setView('impact')">Impact</button>

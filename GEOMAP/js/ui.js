@@ -11,8 +11,6 @@ const UI = (() => {
     _renderRankings('priority');
     _updateBottomStats();
     _renderWelcomePanel();
-    // Auto-select top priority facility after 600ms
-    setTimeout(() => showFacilityDetail(_data.rankings.byPriority[0].id), 800);
   }
 
   // ─── Auto-highlight Badges ────────────────────────────────────────────────────
