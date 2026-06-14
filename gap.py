@@ -55,11 +55,16 @@ def parse_inputs(data: dict) -> GapInputs:
             parsed = float(DEFAULT_INPUTS[name])
         return max(minimum, parsed)
 
+    production_amount = number("production_amount", 1.0)
+    useful_output = min(number("useful_output"), production_amount)
+    waste_generated = min(number("waste_generated"), production_amount)
+    recovered_material = min(number("recovered_material"), waste_generated)
+
     return GapInputs(
-        production_amount=number("production_amount", 1.0),
-        useful_output=number("useful_output"),
-        waste_generated=number("waste_generated"),
-        recovered_material=number("recovered_material"),
+        production_amount=production_amount,
+        useful_output=useful_output,
+        waste_generated=waste_generated,
+        recovered_material=recovered_material,
         recycled_content=min(100.0, number("recycled_content")),
     )
 

@@ -167,16 +167,21 @@ def parse_inputs(data: dict) -> SustainabilityInputs:
             parsed = float(DEFAULT_INPUTS[name])
         return max(minimum, parsed)
 
+    production_amount = number("production_amount", 1.0)
+    useful_output = min(number("useful_output"), production_amount)
+    waste_generated = min(number("waste_generated"), production_amount)
+    recovered_material = min(number("recovered_material"), waste_generated)
+
     return SustainabilityInputs(
         metal_type=metal_type,
-        production_amount=number("production_amount", 1.0),
+        production_amount=production_amount,
         electricity_used=number("electricity_used"),
         diesel_used=number("diesel_used"),
         transport_distance=number("transport_distance"),
         water_used=number("water_used"),
-        waste_generated=number("waste_generated"),
-        recovered_material=number("recovered_material"),
-        useful_output=number("useful_output"),
+        waste_generated=waste_generated,
+        recovered_material=recovered_material,
+        useful_output=useful_output,
         recycled_content=min(100.0, number("recycled_content")),
     )
 
@@ -762,6 +767,25 @@ def comparison():
     )
 
 
+@app.route("/gap")
+def circularity_gap():
+    from gap import DEFAULT_INPUTS as GAP_DEFAULTS
+
+    defaults = GAP_DEFAULTS.copy()
+    defaults.update(read_shared_inputs())
+    return render_template("gap.html", defaults=defaults)
+
+
+@app.route("/monetary")
+def monetary_impact():
+    from gap import DEFAULT_INPUTS as GAP_DEFAULTS, MONETARY_DEFAULTS
+
+    defaults = GAP_DEFAULTS.copy()
+    defaults.update(read_shared_inputs())
+    defaults.update(MONETARY_DEFAULTS)
+    return render_template("monetary.html", defaults=defaults)
+
+
 @app.post("/api/calculate")
 def api_calculate():
     inputs = parse_inputs(request.get_json(silent=True) or {})
@@ -772,6 +796,25 @@ def api_calculate():
 @app.get("/api/shared")
 def api_shared():
     return jsonify(read_shared_inputs())
+
+
+@app.post("/api/gap/calculate")
+def api_gap_calculate():
+    from gap import build_payload as build_gap_payload, parse_inputs as parse_gap_inputs
+
+    inputs = parse_gap_inputs(request.get_json(silent=True) or {})
+    write_shared_inputs(asdict(inputs))
+    return jsonify(build_gap_payload(inputs))
+
+
+@app.post("/api/monetary")
+def api_monetary():
+    from gap import build_monetary_payload, parse_monetary_inputs
+
+    data = request.get_json(silent=True) or {}
+    inputs, _ = parse_monetary_inputs(data)
+    write_shared_inputs(asdict(inputs))
+    return jsonify(build_monetary_payload(data))
 
 
 @app.post("/api/compare")
@@ -811,6 +854,20 @@ def download_report():
         headers={
             "Content-Disposition": "attachment; filename=sustainability_report.csv",
         },
+    )
+
+
+@app.get("/gap/download")
+def download_gap_report():
+    from gap import build_rows, calculate_metrics as calculate_gap_metrics, generate_csv as generate_gap_csv
+    from gap import parse_inputs as parse_gap_inputs
+
+    inputs = parse_gap_inputs(request.args.to_dict())
+    rows = build_rows(inputs, calculate_gap_metrics(inputs))
+    return Response(
+        generate_gap_csv(rows),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=circularity_report.csv"},
     )
 
 

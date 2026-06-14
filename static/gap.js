@@ -24,7 +24,25 @@ function collectInputs() {
     values[key] = Number(value);
   });
 
+  constrainMaterialInputs(values, form);
   return values;
+}
+
+function constrainMaterialInputs(values, targetForm) {
+  const production = Math.max(1, Number(values.production_amount) || 1);
+  values.production_amount = production;
+  values.useful_output = Math.min(Math.max(0, Number(values.useful_output) || 0), production);
+  values.waste_generated = Math.min(Math.max(0, Number(values.waste_generated) || 0), production);
+  values.recovered_material = Math.min(
+    Math.max(0, Number(values.recovered_material) || 0),
+    values.waste_generated,
+  );
+
+  ["production_amount", "useful_output", "waste_generated", "recovered_material"].forEach((key) => {
+    if (targetForm.elements[key] && Number(targetForm.elements[key].value) !== values[key]) {
+      targetForm.elements[key].value = values[key];
+    }
+  });
 }
 
 function queryStringFromInputs(inputs) {
@@ -118,9 +136,9 @@ async function refreshDashboard() {
   const inputs = collectInputs();
   localStorage.setItem("sustainability_gap_inputs", JSON.stringify(inputs));
   recycledValue.textContent = inputs.recycled_content;
-  downloadLink.href = `/download?${queryStringFromInputs(inputs)}`;
+  downloadLink.href = `/gap/download?${queryStringFromInputs(inputs)}`;
 
-  const response = await fetch("/api/calculate", {
+  const response = await fetch("/api/gap/calculate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(inputs),
