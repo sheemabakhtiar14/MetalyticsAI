@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geo Impact Mapper — MetalAI</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ── TOP BAR ─────────────────────────────────────────────────────────────── -->
+  <header id="topbar">
+    <div class="brand">
+      <div class="brand-icon">⬡</div>
+      <div>
+        <div class="brand-name">MetalAI</div>
+        <div class="brand-sub">GEO IMPACT MAPPER</div>
+      </div>
+    </div>
+
+    <div id="auto-highlights">
+      <!-- Populated by UI.init() -->
+    </div>
+
+    <div class="layer-controls">
+      <button class="layer-btn active" id="btn-lulc"     onclick="GeoMap.toggleLULC()"     title="Toggle ESA WorldCover land cover classification">Land Cover</button>
+      <button class="layer-btn active" id="btn-heatmap"  onclick="GeoMap.toggleHeatmap()"  title="Toggle CO₂ heatmap">Heatmap</button>
+      <button class="layer-btn active" id="btn-routes"   onclick="GeoMap.toggleRoutes()"   title="Toggle transport routes">Routes</button>
+      <button class="layer-btn active" id="btn-segments" onclick="GeoMap.toggleSegments()" title="Toggle regional segmentation zones">Regions</button>
+      <button class="layer-btn"        id="btn-clusters" onclick="GeoMap.toggleClusters()" title="Toggle facility clusters">Clusters</button>
+      <div class="view-switcher">
+        <button class="view-btn active" data-view="impact"      onclick="GeoMap.setView('impact')">Impact</button>
+        <button class="view-btn"        data-view="recovery"    onclick="GeoMap.setView('recovery')">Recovery</button>
+        <button class="view-btn"        data-view="circularity" onclick="GeoMap.setView('circularity')">Circularity</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── MAIN LAYOUT ──────────────────────────────────────────────────────────── -->
+  <div id="main-layout">
+
+    <!-- LEFT: Rankings -->
+    <aside id="sidebar">
+      <div class="panel-header">
+        <span>Facility Rankings</span>
+        <span class="facility-count" id="facility-count">15 facilities</span>
+      </div>
+
+      <div class="rank-tabs">
+        <button class="rank-tab active" data-tab="priority"    onclick="UI.showRankTab('priority')">Priority</button>
+        <button class="rank-tab"        data-tab="impact"      onclick="UI.showRankTab('impact')">Impact</button>
+        <button class="rank-tab"        data-tab="recovery"    onclick="UI.showRankTab('recovery')">Recovery</button>
+        <button class="rank-tab"        data-tab="circularity" onclick="UI.showRankTab('circularity')">Circular</button>
+      </div>
+
+      <div id="rank-list" class="rank-list">
+        <!-- Populated by UI.init() -->
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="region-btn" onclick="UI.showRegionalView()">&#127758; Regional Analysis</button>
+      </div>
+    </aside>
+
+    <!-- CENTER: Map -->
+    <div id="map-container">
+      <div id="map"></div>
+
+      <!-- ESA WorldCover land cover legend -->
+      <div id="lulc-legend">
+        <div class="legend-title">ESA WorldCover 2021 — Land Cover</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="dot" style="background:#006400"></span><span class="legend-label">Tree Cover</span></div>
+          <div class="legend-item"><span class="dot" style="background:#FFBB22"></span><span class="legend-label">Shrubland</span></div>
+          <div class="legend-item"><span class="dot" style="background:#FFFF4C"></span><span class="legend-label">Grassland</span></div>
+          <div class="legend-item"><span class="dot" style="background:#F096FF"></span><span class="legend-label">Cropland</span></div>
+          <div class="legend-item"><span class="dot" style="background:#FA0000"></span><span class="legend-label">Built-up / Urban</span></div>
+          <div class="legend-item"><span class="dot" style="background:#B4B4B4"></span><span class="legend-label">Bare / Mining Soil</span></div>
+          <div class="legend-item"><span class="dot" style="background:#0064C8"></span><span class="legend-label">Water Bodies</span></div>
+          <div class="legend-item"><span class="dot" style="background:#0096A0"></span><span class="legend-label">Wetland</span></div>
+        </div>
+        <div style="margin-top:7px;padding-top:6px;border-top:1px solid #1a3e22;font-size:9.5px;color:#4a7a54">10 m resolution · Sentinel-1/2 derived</div>
+      </div>
+
+      <div id="map-legend">
+        <div class="legend-title">Environmental Impact Score</div>
+        <div class="legend-items">
+          <div class="legend-item"><span class="dot critical"></span><span class="legend-label">Critical (70–100)</span></div>
+          <div class="legend-item"><span class="dot high"></span><span class="legend-label">High (50–70)</span></div>
+          <div class="legend-item"><span class="dot medium"></span><span class="legend-label">Moderate (30–50)</span></div>
+          <div class="legend-item"><span class="dot low"></span><span class="legend-label">Low (0–30)</span></div>
+        </div>
+        <div class="legend-title" style="margin-top:8px; border-top:1px solid #1a3e22; padding-top:6px;">Marker size = production volume</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Facility Detail -->
+    <div id="detail-panel" class="detail-panel hidden">
+      <div id="detail-content">
+        <!-- Populated by UI.showFacilityDetail() -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── BOTTOM STATS BAR ─────────────────────────────────────────────────────── -->
+  <footer id="bottombar">
+    <div class="stat-item">
+      <div class="stat-label">Portfolio CO₂</div>
+      <div class="stat-value critical-text" id="stat-co2">—</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-label">Total Waste</div>
+      <div class="stat-value high-text" id="stat-waste">—</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-label">Energy Consumed</div>
+      <div class="stat-value medium-text" id="stat-energy">—</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-label">Recoverable Metal</div>
+      <div class="stat-value recovery-text" id="stat-recovery">—</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-label">Facilities</div>
+      <div class="stat-value lime-text" id="stat-facilities">—</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-label">Avg. Circularity</div>
+      <div class="stat-value circularity-text" id="stat-circularity">—</div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+  <script src="js/data.js"></script>
+  <script src="js/analytics.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -20,6 +20,11 @@ DEFAULT_INPUTS = {
     "recycled_content": 40.0,
 }
 
+MONETARY_DEFAULTS = {
+    "resale_value_per_tonne": 30000.0,
+    "avoided_disposal_cost_per_tonne": 5000.0,
+}
+
 CHART_THEME = {
     "paper_bgcolor": "rgba(0,0,0,0)",
     "plot_bgcolor": "rgba(0,0,0,0)",
@@ -220,6 +225,127 @@ def build_payload(inputs: GapInputs) -> dict:
     }
 
 
+def parse_monetary_inputs(data: dict) -> tuple[GapInputs, dict]:
+    inputs = parse_inputs(data)
+    values = MONETARY_DEFAULTS.copy()
+    values.update(data or {})
+
+    def money(name: str) -> float:
+        try:
+            parsed = float(values.get(name, MONETARY_DEFAULTS[name]))
+        except (TypeError, ValueError):
+            parsed = MONETARY_DEFAULTS[name]
+        return max(0.0, parsed)
+
+    rates = {
+        "resale_value_per_tonne": money("resale_value_per_tonne"),
+        "avoided_disposal_cost_per_tonne": money("avoided_disposal_cost_per_tonne"),
+    }
+    rates["total_value_per_tonne"] = (
+        rates["resale_value_per_tonne"] + rates["avoided_disposal_cost_per_tonne"]
+    )
+    return inputs, rates
+
+
+def calculate_monetary_impact(inputs: GapInputs, rates: dict) -> dict:
+    recovered_tonnes = inputs.recovered_material / 1000
+    unrecovered_waste_kg = max(0, inputs.waste_generated - inputs.recovered_material)
+    unrecovered_waste_tonnes = unrecovered_waste_kg / 1000
+
+    current_value = recovered_tonnes * rates["total_value_per_tonne"]
+    monetary_gap = unrecovered_waste_tonnes * rates["total_value_per_tonne"]
+    total_opportunity = current_value + monetary_gap
+
+    return {
+        "recovered_tonnes": recovered_tonnes,
+        "unrecovered_waste_kg": unrecovered_waste_kg,
+        "unrecovered_waste_tonnes": unrecovered_waste_tonnes,
+        "current_value": current_value,
+        "monetary_gap": monetary_gap,
+        "total_opportunity": total_opportunity,
+    }
+
+
+def build_monetary_chart(impact: dict) -> dict:
+    fig = go.Figure(
+        go.Bar(
+            x=["Current Value", "Monetary Gap", "Total Opportunity"],
+            y=[
+                impact["current_value"],
+                impact["monetary_gap"],
+                impact["total_opportunity"],
+            ],
+            marker={
+                "color": ["#2ea04f", "#f78166", "#388bfd"],
+                "line": {"width": 0},
+            },
+            text=[
+                f"₹{impact['current_value']:,.0f}",
+                f"₹{impact['monetary_gap']:,.0f}",
+                f"₹{impact['total_opportunity']:,.0f}",
+            ],
+            textposition="outside",
+            textfont={"color": "#e6edf3"},
+        )
+    )
+    fig.update_layout(
+        title="Circularity Value in Rupees",
+        xaxis={"showgrid": False, "color": "#8b949e"},
+        yaxis={"showgrid": True, "gridcolor": "#21262d", "color": "#8b949e"},
+        **CHART_THEME,
+    )
+    return fig.to_plotly_json()
+
+
+def build_monetary_payload(data: dict) -> dict:
+    inputs, rates = parse_monetary_inputs(data)
+    circularity_metrics = calculate_metrics(inputs)
+    impact = calculate_monetary_impact(inputs, rates)
+    rows = [
+        {"Metric": "Recovered Material (tonnes)", "Value": round(impact["recovered_tonnes"], 4)},
+        {
+            "Metric": "Unrecovered Waste (tonnes)",
+            "Value": round(impact["unrecovered_waste_tonnes"], 4),
+        },
+        {
+            "Metric": "Resale Value (₹/tonne)",
+            "Value": round(rates["resale_value_per_tonne"], 2),
+        },
+        {
+            "Metric": "Avoided Disposal Cost (₹/tonne)",
+            "Value": round(rates["avoided_disposal_cost_per_tonne"], 2),
+        },
+        {
+            "Metric": "Total Value Rate (₹/tonne)",
+            "Value": round(rates["total_value_per_tonne"], 2),
+        },
+        {"Metric": "Current Monetary Value (₹)", "Value": round(impact["current_value"], 2)},
+        {"Metric": "Monetary Gap (₹)", "Value": round(impact["monetary_gap"], 2)},
+        {
+            "Metric": "Total Monetary Opportunity (₹)",
+            "Value": round(impact["total_opportunity"], 2),
+        },
+    ]
+    return {
+        "inputs": asdict(inputs),
+        "rates": rates,
+        "impact": impact,
+        "circularity": {
+            "index": round(circularity_metrics["circularity_index"], 2),
+            "gap": round(circularity_metrics["circularity_gap"], 2),
+            "recovery_potential": round(circularity_metrics["recovery_potential"], 2),
+        },
+        "cards": {
+            "current_value": f"₹{impact['current_value']:,.0f}",
+            "monetary_gap": f"₹{impact['monetary_gap']:,.0f}",
+            "total_opportunity": f"₹{impact['total_opportunity']:,.0f}",
+            "unrecovered_waste": f"{impact['unrecovered_waste_kg']:,.0f} kg",
+        },
+        "table": rows,
+        "chart": build_monetary_chart(impact),
+    }
+
+
 def generate_csv(rows: list[dict]) -> str:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["Metric", "Value (%)"])
@@ -235,6 +361,14 @@ def index():
     return render_template("gap.html", defaults=defaults)
 
 
+@app.route("/monetary")
+def monetary():
+    defaults = DEFAULT_INPUTS.copy()
+    defaults.update(read_shared_inputs())
+    defaults.update(MONETARY_DEFAULTS)
+    return render_template("monetary.html", defaults=defaults)
+
+
 @app.post("/api/calculate")
 def api_calculate():
     inputs = parse_inputs(request.get_json(silent=True) or {})
@@ -245,6 +379,14 @@ def api_calculate():
 @app.get("/api/shared")
 def api_shared():
     return jsonify(read_shared_inputs())
+
+
+@app.post("/api/monetary")
+def api_monetary():
+    data = request.get_json(silent=True) or {}
+    inputs, _ = parse_monetary_inputs(data)
+    write_shared_inputs(asdict(inputs))
+    return jsonify(build_monetary_payload(data))
 
 
 @app.get("/download")
@@ -259,4 +401,4 @@ def download_report():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5001, use_reloader=False)
